@@ -5,14 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>재고 관리표</title>
     <style>
+        /* 기본 라이트 모드 스타일 */
         body {
             font-family: 'Malgun Gothic', sans-serif;
             padding: 20px;
+            background-color: #ffffff;
+            color: #333333;
         }
         table {
             border-collapse: collapse;
             width: 100%;
-            max-width: 600px;
+            max-width: 650px;
             margin-top: 15px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
@@ -34,6 +37,54 @@
             padding: 5px;
             text-align: right;
             box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        /* 오차 란 텍스트 기본 스타일 */
+        .error-cell {
+            font-weight: bold;
+            background-color: #fcfcfc;
+        }
+        .error-zero { color: #2e7d32; } /* 오차가 0일 때 (초록) */
+        .error-diff { color: #d32f2f; } /* 오차가 있을 때 (빨강) */
+
+        /* 🌙 다크 모드 (시스템 설정에 따라 자동 적용) */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #121212;
+                color: #e0e0e0;
+            }
+            table {
+                box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+            }
+            th, td {
+                border: 1px solid #333;
+            }
+            th {
+                background-color: #242424;
+                color: #ffffff;
+            }
+            input {
+                background-color: #1e1e1e;
+                color: #e0e0e0;
+                border: 1px solid #444;
+            }
+            input:focus {
+                outline: none;
+                border-color: #777;
+                background-color: #2a2a2a;
+            }
+            input::placeholder {
+                color: #666;
+            }
+            
+            /* 다크 모드용 오차 란 색상 조정 */
+            .error-cell {
+                background-color: #1a1a1a;
+            }
+            .error-zero { color: #81c784; } /* 밝은 초록 */
+            .error-diff { color: #e57373; } /* 밝은 빨강 */
         }
     </style>
 </head>
@@ -46,14 +97,13 @@
                 <th>cigarname</th>
                 <th>전산재고</th>
                 <th>현재고</th>
-            </tr>
+                <th>오차</th> </tr>
         </thead>
         <tbody>
             </tbody>
     </table>
 
     <script>
-        // 1. 제공된 데이터 배열
         const data = {
             "cigarname": [
                 "아일랜드 클릭","블러쉬 클릭","퍼플 부스트","샤인 부스트","부스트",
@@ -64,11 +114,8 @@
         };
 
         const tbody = document.querySelector("#inventoryTable tbody");
-        
-        // 2. 현재 URL의 쿼리 스트링(파라미터) 읽어오기
         const urlParams = new URLSearchParams(window.location.search);
 
-        // 3. 입력 값이 변경될 때마다 URL을 업데이트하는 함수
         function updateURL() {
             const params = new URLSearchParams();
             const rows = tbody.querySelectorAll("tr");
@@ -77,54 +124,94 @@
                 const sysVal = row.querySelector(".sys-input").value;
                 const curVal = row.querySelector(".cur-input").value;
                 
-                // 값이 입력된 경우에만 파라미터 추가 (s = 전산재고, c = 현재고)
                 if (sysVal !== "") params.set(`s${index}`, sysVal);
                 if (curVal !== "") params.set(`c${index}`, curVal);
             });
 
-            // 페이지 새로고침 없이 URL만 변경
             const newUrl = `${window.location.pathname}?${params.toString()}`;
             window.history.replaceState({}, '', newUrl);
         }
 
-        // 4. 테이블 행 동적 생성
         data.cigarname.forEach((name, index) => {
             const tr = document.createElement("tr");
 
-            // cigarname 셀
+            // 1. 제품명 셀
             const tdName = document.createElement("td");
             tdName.textContent = name;
 
-            // 전산재고 셀 및 입력란
+            // 2. 전산재고 셀
             const tdSys = document.createElement("td");
             const inputSys = document.createElement("input");
             inputSys.type = "number";
             inputSys.className = "sys-input";
             inputSys.placeholder = "0";
-            // URL에 해당 인덱스의 저장된 값이 있으면 불러와서 채움
             if (urlParams.has(`s${index}`)) {
                 inputSys.value = urlParams.get(`s${index}`);
             }
-            inputSys.addEventListener("input", updateURL); // 입력 시 URL 업데이트
             tdSys.appendChild(inputSys);
 
-            // 현재고 셀 및 입력란
+            // 3. 현재고 셀
             const tdCur = document.createElement("td");
             const inputCur = document.createElement("input");
             inputCur.type = "number";
             inputCur.className = "cur-input";
             inputCur.placeholder = "0";
-            // URL에 해당 인덱스의 저장된 값이 있으면 불러와서 채움
             if (urlParams.has(`c${index}`)) {
                 inputCur.value = urlParams.get(`c${index}`);
             }
-            inputCur.addEventListener("input", updateURL); // 입력 시 URL 업데이트
             tdCur.appendChild(inputCur);
 
-            // 행에 셀 추가 후 테이블에 붙이기
+            // 4. 오차 셀 (텍스트 전용)
+            const tdError = document.createElement("td");
+            tdError.className = "error-cell";
+            tdError.textContent = "-";
+
+            // 오차 계산 함수 (전산재고 - 현재고)
+            function calculateError() {
+                const sysVal = inputSys.value;
+                const curVal = inputCur.value;
+
+                // 둘 중 하나라도 입력값이 있을 때만 계산
+                if (sysVal !== "" || curVal !== "") {
+                    // 값이 비어있으면 0으로 처리하여 계산
+                    const sysNum = parseInt(sysVal) || 0;
+                    const curNum = parseInt(curVal) || 0;
+                    const diff = sysNum - curNum;
+                    
+                    tdError.textContent = diff;
+
+                    // 색상 초기화 후 값에 따라 클래스 부여
+                    tdError.classList.remove("error-zero", "error-diff");
+                    if (diff === 0) {
+                        tdError.classList.add("error-zero");
+                    } else {
+                        tdError.classList.add("error-diff");
+                    }
+                } else {
+                    // 둘 다 비어있으면 표시 초기화
+                    tdError.textContent = "-";
+                    tdError.classList.remove("error-zero", "error-diff");
+                }
+            }
+
+            // 입력값이 바뀔 때마다 URL 업데이트 및 오차 계산 실행
+            inputSys.addEventListener("input", () => {
+                updateURL();
+                calculateError();
+            });
+            inputCur.addEventListener("input", () => {
+                updateURL();
+                calculateError();
+            });
+
+            // 초기 로딩 시 URL에 값이 있었다면 오차 계산 바로 적용
+            calculateError();
+
+            // 행 조립
             tr.appendChild(tdName);
             tr.appendChild(tdSys);
             tr.appendChild(tdCur);
+            tr.appendChild(tdError);
             tbody.appendChild(tr);
         });
     </script>
